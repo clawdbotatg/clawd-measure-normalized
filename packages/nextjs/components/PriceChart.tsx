@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { format } from "date-fns";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { NormalizedPoint, Timeframe } from "~~/utils/priceData";
@@ -67,14 +66,7 @@ const CHART_CONFIG: Record<
 export const PriceChart = ({ data, mode, timeframe, isLoading }: PriceChartProps) => {
   const config = CHART_CONFIG[mode];
 
-  const chartData = useMemo(
-    () =>
-      data.map(p => ({
-        ...p,
-        label: formatTimestamp(p.timestamp, timeframe),
-      })),
-    [data, timeframe],
-  );
+  const chartData = data;
 
   if (isLoading) {
     return (
@@ -125,9 +117,12 @@ export const PriceChart = ({ data, mode, timeframe, isLoading }: PriceChartProps
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.1} />
               <XAxis
-                dataKey="label"
+                dataKey="timestamp"
+                type="number"
+                scale="time"
+                domain={["dataMin", "dataMax"]}
+                tickFormatter={ts => formatTimestamp(ts, timeframe)}
                 tick={{ fontSize: 11 }}
-                interval="preserveStartEnd"
                 stroke="currentColor"
                 opacity={0.5}
               />
@@ -146,6 +141,7 @@ export const PriceChart = ({ data, mode, timeframe, isLoading }: PriceChartProps
                   borderRadius: "0.5rem",
                 }}
                 labelStyle={{ color: "oklch(var(--bc))" }}
+                labelFormatter={ts => formatTimestamp(Number(ts), timeframe)}
                 formatter={value => [config.formatter(Number(value)), config.title]}
               />
               {mode === "normalized" && (
