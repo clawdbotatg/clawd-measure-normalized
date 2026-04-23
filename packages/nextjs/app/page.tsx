@@ -9,8 +9,12 @@ import { fetchNormalizedData } from "~~/utils/priceData";
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
   { label: "1h", value: "1h" },
   { label: "4h", value: "4h" },
+  { label: "8h", value: "8h" },
   { label: "24h", value: "hourly24" },
+  { label: "3d", value: "3d" },
   { label: "7d", value: "hourly" },
+  { label: "2w", value: "2w" },
+  { label: "1mo", value: "1mo" },
   { label: "90d", value: "daily" },
   { label: "1y", value: "weekly" },
 ];

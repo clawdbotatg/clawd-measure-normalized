@@ -3,27 +3,35 @@ import { NextRequest, NextResponse } from "next/server";
 const CLAWD_POOL_ADDRESS = "0xcd55381a53da35ab1d7bc5e3fe5f76cac976fac3";
 const GECKO_TERMINAL_BASE = "https://api.geckoterminal.com/api/v2";
 
-type Timeframe = "1h" | "4h" | "hourly24" | "hourly" | "daily" | "weekly";
+type Timeframe = "1h" | "4h" | "8h" | "hourly24" | "3d" | "hourly" | "2w" | "1mo" | "daily" | "weekly";
 
 // Server-side cache — persists across requests, survives client hot reloads
 const cache = new Map<string, { data: unknown; fetchedAt: number }>();
 const CACHE_TTL: Record<Timeframe, number> = {
-  "1h": 60 * 1000, // 1 min for 1hr view
-  "4h": 2 * 60 * 1000, // 2 min for 4hr view
-  hourly24: 3 * 60 * 1000, // 3 min
-  hourly: 5 * 60 * 1000, // 5 min
-  daily: 10 * 60 * 1000, // 10 min
-  weekly: 30 * 60 * 1000, // 30 min
+  "1h": 2 * 60 * 1000, // 2 min
+  "4h": 5 * 60 * 1000, // 5 min
+  "8h": 10 * 60 * 1000, // 10 min
+  hourly24: 15 * 60 * 1000, // 15 min
+  "3d": 30 * 60 * 1000, // 30 min
+  hourly: 30 * 60 * 1000, // 30 min
+  "2w": 60 * 60 * 1000, // 1 hour
+  "1mo": 60 * 60 * 1000, // 1 hour
+  daily: 60 * 60 * 1000, // 1 hour
+  weekly: 3 * 60 * 60 * 1000, // 3 hours
 };
 
 function getCached<T>(key: string, ttl: number): T | null {
   const entry = cache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > ttl) {
-    cache.delete(key);
-    return null;
-  }
+  if (Date.now() - entry.fetchedAt > ttl) return null;
   return entry.data as T;
+}
+
+// Stale fallback — returns cached value regardless of age. Used when upstream
+// fetches fail (e.g. 429 rate limits) so the UI keeps showing last-known data.
+function getStale<T>(key: string): T | null {
+  const entry = cache.get(key);
+  return entry ? (entry.data as T) : null;
 }
 
 type GeckoParams = { endpoint: string; aggregate: number; limit: number };
@@ -34,10 +42,18 @@ function timeframeToGeckoParams(tf: Timeframe): GeckoParams {
       return { endpoint: "minute", aggregate: 1, limit: 60 };
     case "4h":
       return { endpoint: "minute", aggregate: 5, limit: 48 };
+    case "8h":
+      return { endpoint: "minute", aggregate: 15, limit: 32 };
     case "hourly24":
       return { endpoint: "hour", aggregate: 1, limit: 24 };
+    case "3d":
+      return { endpoint: "hour", aggregate: 1, limit: 72 };
     case "hourly":
       return { endpoint: "hour", aggregate: 1, limit: 168 };
+    case "2w":
+      return { endpoint: "hour", aggregate: 4, limit: 84 };
+    case "1mo":
+      return { endpoint: "hour", aggregate: 12, limit: 60 };
     case "daily":
       return { endpoint: "day", aggregate: 1, limit: 90 };
     case "weekly":
@@ -54,10 +70,16 @@ function timeframeToCoinGeckoDays(tf: Timeframe): number {
   switch (tf) {
     case "1h":
     case "4h":
+    case "8h":
     case "hourly24":
       return 1; // always 1 day for sub-day views — max 5-min granularity
+    case "3d":
     case "hourly":
       return 7;
+    case "2w":
+      return 14;
+    case "1mo":
+      return 30;
     case "daily":
       return 90;
     case "weekly":
@@ -72,10 +94,18 @@ function timeframeWindowSeconds(tf: Timeframe): number {
       return 60 * 60;
     case "4h":
       return 4 * 60 * 60;
+    case "8h":
+      return 8 * 60 * 60;
     case "hourly24":
       return 24 * 60 * 60;
+    case "3d":
+      return 3 * 24 * 60 * 60;
     case "hourly":
       return 7 * 24 * 60 * 60;
+    case "2w":
+      return 14 * 24 * 60 * 60;
+    case "1mo":
+      return 30 * 24 * 60 * 60;
     case "daily":
       return 90 * 24 * 60 * 60;
     case "weekly":
@@ -92,28 +122,34 @@ async function fetchClawdPrices(tf: Timeframe): Promise<PricePoint[]> {
   const cached = getCached<PricePoint[]>(cacheKey, CACHE_TTL[tf]);
   if (cached) return cached;
 
-  const { endpoint, aggregate, limit } = timeframeToGeckoParams(tf);
-  const url = `${GECKO_TERMINAL_BASE}/networks/base/pools/${CLAWD_POOL_ADDRESS}/ohlcv/${endpoint}?aggregate=${aggregate}&limit=${limit}&currency=usd`;
+  try {
+    const { endpoint, aggregate, limit } = timeframeToGeckoParams(tf);
+    const url = `${GECKO_TERMINAL_BASE}/networks/base/pools/${CLAWD_POOL_ADDRESS}/ohlcv/${endpoint}?aggregate=${aggregate}&limit=${limit}&currency=usd`;
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`GeckoTerminal: ${res.status}`);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`GeckoTerminal: ${res.status}`);
 
-  const json = await res.json();
-  const ohlcvList: GeckoOhlcv[] = json?.data?.attributes?.ohlcv_list ?? [];
+    const json = await res.json();
+    const ohlcvList: GeckoOhlcv[] = json?.data?.attributes?.ohlcv_list ?? [];
 
-  let points = ohlcvList
-    .map(candle => ({
-      timestamp: candle[0],
-      price: parseFloat(candle[4]),
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
+    let points = ohlcvList
+      .map(candle => ({
+        timestamp: candle[0],
+        price: parseFloat(candle[4]),
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
 
-  if (tf === "weekly") {
-    points = aggregateToWeekly(points);
+    if (tf === "weekly") {
+      points = aggregateToWeekly(points);
+    }
+
+    cache.set(cacheKey, { data: points, fetchedAt: Date.now() });
+    return points;
+  } catch (err) {
+    const stale = getStale<PricePoint[]>(cacheKey);
+    if (stale) return stale;
+    throw err;
   }
-
-  cache.set(cacheKey, { data: points, fetchedAt: Date.now() });
-  return points;
 }
 
 async function fetchEthPrices(tf: Timeframe): Promise<PricePoint[]> {
@@ -122,21 +158,27 @@ async function fetchEthPrices(tf: Timeframe): Promise<PricePoint[]> {
   const cached = getCached<PricePoint[]>(cacheKey, CACHE_TTL[tf]);
   if (cached) return cached;
 
-  const url = `https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=${days}`;
+  try {
+    const url = `https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=${days}`;
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`CoinGecko: ${res.status}`);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`CoinGecko: ${res.status}`);
 
-  const json = await res.json();
-  const prices: [number, number][] = json?.prices ?? [];
+    const json = await res.json();
+    const prices: [number, number][] = json?.prices ?? [];
 
-  const points = prices.map(([ts, price]) => ({
-    timestamp: Math.floor(ts / 1000),
-    price,
-  }));
+    const points = prices.map(([ts, price]) => ({
+      timestamp: Math.floor(ts / 1000),
+      price,
+    }));
 
-  cache.set(cacheKey, { data: points, fetchedAt: Date.now() });
-  return points;
+    cache.set(cacheKey, { data: points, fetchedAt: Date.now() });
+    return points;
+  } catch (err) {
+    const stale = getStale<PricePoint[]>(cacheKey);
+    if (stale) return stale;
+    throw err;
+  }
 }
 
 function aggregateToWeekly(points: PricePoint[]): PricePoint[] {

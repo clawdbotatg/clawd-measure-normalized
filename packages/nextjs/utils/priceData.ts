@@ -1,4 +1,4 @@
-export type Timeframe = "1h" | "4h" | "hourly24" | "hourly" | "daily" | "weekly";
+export type Timeframe = "1h" | "4h" | "8h" | "hourly24" | "3d" | "hourly" | "2w" | "1mo" | "daily" | "weekly";
 
 export type NormalizedPoint = {
   timestamp: number;

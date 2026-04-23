@@ -18,10 +18,14 @@ function formatTimestamp(ts: number, timeframe: Timeframe): string {
   switch (timeframe) {
     case "1h":
     case "4h":
+    case "8h":
     case "hourly24":
       return format(date, "HH:mm");
+    case "3d":
     case "hourly":
       return format(date, "MMM d HH:mm");
+    case "2w":
+    case "1mo":
     case "daily":
     case "weekly":
       return format(date, "MMM d");
