@@ -78,7 +78,11 @@ const Home: NextPage = () => {
               </div>
               <div className="stat">
                 <div className="stat-title">CLAWD/ETH Ratio</div>
-                <div className="stat-value text-emerald-500 text-lg md:text-2xl">
+                <div
+                  className={`stat-value text-lg md:text-2xl ${
+                    latestPoint.normalizedRatio >= 1 ? "text-emerald-500" : "text-red-500"
+                  }`}
+                >
                   {latestPoint.normalizedRatio.toFixed(4)}x
                 </div>
                 <div className="stat-desc">

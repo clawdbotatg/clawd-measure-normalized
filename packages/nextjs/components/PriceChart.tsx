@@ -102,18 +102,50 @@ export const PriceChart = ({ data, mode, timeframe, isLoading }: PriceChartProps
   }
   const padding = (maxVal - minVal) * 0.1 || maxVal * 0.1;
 
+  const isNormalized = mode === "normalized";
+  const score = isNormalized ? (values.reduce((sum, v) => sum + (v - 1), 0) / values.length) * 100 : 0;
+  const scorePositive = score >= 0;
+  const domainMin = minVal - padding;
+  const domainMax = maxVal + padding;
+  const crossoverOffset = Math.max(0, Math.min(1, (domainMax - 1) / (domainMax - domainMin)));
+  const GREEN = "#10b981";
+  const RED = "#ef4444";
+
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body p-4 md:p-6">
-        <h2 className="card-title text-lg">{config.title}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="card-title text-lg">{config.title}</h2>
+          {isNormalized && (
+            <span className={`badge ${scorePositive ? "badge-success" : "badge-error"}`}>
+              {scorePositive ? "+" : ""}
+              {score.toFixed(2)}%
+            </span>
+          )}
+        </div>
         <div className="h-64 md:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
-                <linearGradient id={`gradient-${mode}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={config.color} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={config.color} stopOpacity={0} />
-                </linearGradient>
+                {isNormalized ? (
+                  <>
+                    <linearGradient id="stroke-normalized" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset={crossoverOffset} stopColor={GREEN} stopOpacity={1} />
+                      <stop offset={crossoverOffset} stopColor={RED} stopOpacity={1} />
+                    </linearGradient>
+                    <linearGradient id="fill-normalized" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={GREEN} stopOpacity={0.5} />
+                      <stop offset={crossoverOffset} stopColor={GREEN} stopOpacity={0.05} />
+                      <stop offset={crossoverOffset} stopColor={RED} stopOpacity={0.05} />
+                      <stop offset="100%" stopColor={RED} stopOpacity={0.5} />
+                    </linearGradient>
+                  </>
+                ) : (
+                  <linearGradient id={`gradient-${mode}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={config.color} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={config.color} stopOpacity={0} />
+                  </linearGradient>
+                )}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.1} />
               <XAxis
@@ -150,9 +182,9 @@ export const PriceChart = ({ data, mode, timeframe, isLoading }: PriceChartProps
               <Area
                 type="monotone"
                 dataKey={config.dataKey}
-                stroke={config.color}
+                stroke={isNormalized ? "url(#stroke-normalized)" : config.color}
                 strokeWidth={2}
-                fill={`url(#gradient-${mode})`}
+                fill={isNormalized ? "url(#fill-normalized)" : `url(#gradient-${mode})`}
                 dot={false}
                 animationDuration={500}
               />
