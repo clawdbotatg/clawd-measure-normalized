@@ -16,6 +16,7 @@ type PriceChartProps = {
 function formatTimestamp(ts: number, timeframe: Timeframe): string {
   const date = new Date(ts * 1000);
   switch (timeframe) {
+    case "15m":
     case "1h":
     case "4h":
     case "8h":

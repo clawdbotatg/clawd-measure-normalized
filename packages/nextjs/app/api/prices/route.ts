@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 const CLAWD_POOL_ADDRESS = "0xcd55381a53da35ab1d7bc5e3fe5f76cac976fac3";
 const GECKO_TERMINAL_BASE = "https://api.geckoterminal.com/api/v2";
 
-type Timeframe = "1h" | "4h" | "8h" | "hourly24" | "3d" | "hourly" | "2w" | "1mo" | "daily" | "weekly";
+type Timeframe = "15m" | "1h" | "4h" | "8h" | "hourly24" | "3d" | "hourly" | "2w" | "1mo" | "daily" | "weekly";
 
 // Server-side cache — persists across requests, survives client hot reloads
 const cache = new Map<string, { data: unknown; fetchedAt: number }>();
 const CACHE_TTL: Record<Timeframe, number> = {
+  "15m": 60 * 1000, // 1 min
   "1h": 2 * 60 * 1000, // 2 min
   "4h": 5 * 60 * 1000, // 5 min
   "8h": 10 * 60 * 1000, // 10 min
@@ -38,6 +39,8 @@ type GeckoParams = { endpoint: string; aggregate: number; limit: number };
 
 function timeframeToGeckoParams(tf: Timeframe): GeckoParams {
   switch (tf) {
+    case "15m":
+      return { endpoint: "minute", aggregate: 5, limit: 3 };
     case "1h":
       return { endpoint: "minute", aggregate: 1, limit: 60 };
     case "4h":
@@ -68,6 +71,7 @@ function timeframeToGeckoParams(tf: Timeframe): GeckoParams {
 // so we need enough ETH data to cover the full range.
 function timeframeToCoinGeckoDays(tf: Timeframe): number {
   switch (tf) {
+    case "15m":
     case "1h":
     case "4h":
     case "8h":
@@ -90,6 +94,8 @@ function timeframeToCoinGeckoDays(tf: Timeframe): number {
 // How far back (in seconds) each timeframe should display
 function timeframeWindowSeconds(tf: Timeframe): number {
   switch (tf) {
+    case "15m":
+      return 15 * 60;
     case "1h":
       return 60 * 60;
     case "4h":
@@ -232,10 +238,14 @@ export async function GET(request: NextRequest) {
     // Filter CLAWD data to the actual requested time window.
     // GeckoTerminal "last N candles" can span much longer than expected
     // for low-volume tokens (gaps between trades).
+    // For 15m we skip filtering — CLAWD often has no trades in a strict 15-min
+    // window, which would leave the chart with 0–1 points. Showing the most
+    // recent 3 candles (even if they span longer) keeps the +/- signal usable.
+    const skipWindowFilter = tf === "15m";
     const windowSec = timeframeWindowSeconds(tf);
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - windowSec;
-    const clawdPrices = rawClawdPrices.filter(p => p.timestamp >= cutoff);
+    const clawdPrices = skipWindowFilter ? rawClawdPrices : rawClawdPrices.filter(p => p.timestamp >= cutoff);
 
     if (clawdPrices.length === 0) {
       return NextResponse.json({ data: [] });

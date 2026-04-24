@@ -7,6 +7,7 @@ import type { NormalizedPoint, Timeframe } from "~~/utils/priceData";
 import { fetchNormalizedData } from "~~/utils/priceData";
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
+  { label: "15m", value: "15m" },
   { label: "1h", value: "1h" },
   { label: "4h", value: "4h" },
   { label: "8h", value: "8h" },
