@@ -238,10 +238,11 @@ export async function GET(request: NextRequest) {
     // Filter CLAWD data to the actual requested time window.
     // GeckoTerminal "last N candles" can span much longer than expected
     // for low-volume tokens (gaps between trades).
-    // For 15m we skip filtering — CLAWD often has no trades in a strict 15-min
-    // window, which would leave the chart with 0–1 points. Showing the most
-    // recent 3 candles (even if they span longer) keeps the +/- signal usable.
-    const skipWindowFilter = tf === "15m";
+    // For sub-day views we skip filtering — CLAWD often has long stretches
+    // with no trades, so a strict window leaves the chart nearly empty. The
+    // label becomes approximate ("1h" might span several hours of wall-clock
+    // when CLAWD is quiet) but the +/- signal stays usable.
+    const skipWindowFilter = tf === "15m" || tf === "1h" || tf === "4h" || tf === "8h";
     const windowSec = timeframeWindowSeconds(tf);
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - windowSec;
